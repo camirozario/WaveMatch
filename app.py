@@ -105,6 +105,23 @@ def delete_account(user_id):
     return jsonify({'message':'user deleted successfuly'}),200
 
 
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    user = db.session.execute(
+        db.select(User).where(User.email == email)
+    ).scalar_one_or_none()
+
+    if user is None:
+        return jsonify({'message':'Email ou senha inválidos'}),401
+
+    if not check_password_hash(user.password_hash, password):
+        return jsonify({'message':'Email ou senha inválidos'}),401
+
+    return jsonify({'message':'login validado com sucesso'}),200
 
 
 if __name__ == '__main__':
