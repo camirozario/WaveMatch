@@ -9,6 +9,7 @@ from flask_jwt_extended import (
     get_jwt_identity
 )
 import os
+from flask_migrate import Migrate
 from dotenv import load_dotenv
 
 
@@ -24,8 +25,7 @@ app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 
 db = SQLAlchemy(app) # Crie uma instância/objeto de SQLAlchemy, configurada para trabalhar com a minha aplicação Flask app, e guarde esse objeto na variável db
 jwt = JWTManager(app)
-
-
+migrate = Migrate(app,db)
 
 class User(db.Model): # User será um modelo de dados gerenciado pelo meu objeto db
     __tablename__= 'users'
@@ -36,6 +36,24 @@ class User(db.Model): # User será um modelo de dados gerenciado pelo meu objeto
     surf_level = db.Column(db.String(50),nullable=False)
     min_wave_height = db.Column(db.Float,nullable=True)
     max_wave_height = db.Column(db.Float, nullable=True)
+    date_of_birth = db.Column(db.Date, nullable=True)
+
+class SurfSpot(db.Model):
+    __tablename__= 'surf_spot'
+    id = db.Column(db.Integer, primary_key = True)
+    name = db.Column(db.String(100), nullable=False)
+    city = db.Column(db.String(100), nullable=False)
+    state = db.Column(db.String(100),nullable=False)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+    surf_level = db.Column(db.String(50), nullable=False)
+    wave_direction = db.Column(db.String(100))
+    predominant_direction = db.Column(db.String(100))
+    wave_shape = db.Column(db.String(100))
+    wave_duration = db.Column(db.String(100))
+    wave_speed = db.Column(db.String(100))
+    break_length = db.Column(db.String(100))
+    current_tendency = db.Column(db.String(100))
 
 
 #Rotas
@@ -76,6 +94,10 @@ def create_user():
     
     return jsonify({"message": "Sua conta foi criada com sucesso!", "id": new_user.id}), 201 # HTTP status code > 201 significa Created
 
+
+#=================
+#SEÇÃO DO USUARIO
+#=================
 @app.route( '/users/<int:user_id>', methods = ['GET'])
 def get_user(user_id):
     user = db.session.get(User,user_id) # Na sessão do banco (db.session), pegue (get) um objeto do modelo User cuja primary key seja user_id
@@ -153,6 +175,39 @@ def profile():
 
     return jsonify({'name': user.name,
                     'email': user.email})
+
+
+#=================
+#SEÇÃO DO SPOTS DE SURF
+#=================
+
+@app.route('/spots', methods=['GET'])
+def get_spots():
+    spots = db.session.execute(
+        db.select(SurfSpot)
+    ).scalars().all() # TODAS as praias - transforma o resultado em uma lista de objetos
+
+    spots_list = []
+
+    for spot in spots:
+        spots_list.append({
+            'id': spot.id,
+            'name': spot.name,
+            'city': spot.city,
+            'state': spot.state,
+            'latitude': spot.latitude,
+            'longitude': spot.longitude,
+            'surf_level': spot.surf_level,
+            'wave_direction': spot.wave_direction,
+            'predominant_direction': spot.predominant_direction,
+            'wave_shape': spot.wave_shape,
+            'wave_duration': spot.wave_duration,
+            'wave_speed': spot.wave_speed,
+            'break_length': spot.break_length,
+            'current_tendency': spot.current_tendency
+            })
+
+    return jsonify(spots_list),200 
 
 if __name__ == '__main__':
     app.run(debug=True) 
