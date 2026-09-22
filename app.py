@@ -2,7 +2,12 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text # Tansforma SQL textual em algo que ele possa executar no SQLAlchemy. Para isso, usamos a função text().
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import JWTManager, create_access_token
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    jwt_required,
+    get_jwt_identity
+)
 import os
 from dotenv import load_dotenv
 
@@ -15,7 +20,6 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") #Ela diz ao SQ
 # postgresql →  banco que quero usar é PostgreSQL.
 # psycopg → Use o Psycopg para Python conversar com PostgreSQL
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
-print("JWT no Flask:", app.config["JWT_SECRET_KEY"] is not None)
 
 
 db = SQLAlchemy(app) # Crie uma instância/objeto de SQLAlchemy, configurada para trabalhar com a minha aplicação Flask app, e guarde esse objeto na variável db
@@ -43,12 +47,19 @@ def home():
 @app.route('/register', methods=['POST'])
 def create_user():
     data = request.get_json() # Pega os dados enviados pelo cliente e transforma em um dicionário Python
-    name = data.get('name')
     email = data.get('email')
-    password_hash = generate_password_hash(data.get('password'))
+    verify_email=db.session.execute(
+            db.select(User).where(User.email == email)
+        ).scalar_one_or_none()
+
+    if verify_email is not None:
+            return jsonify ({'message': 'Email já registrado'}), 409 # conflict
+
+    name = data.get('name')
     surf_level = data.get('surf_level')
     min_wave_height = data.get('min_wave_height')
     max_wave_height = data.get('max_wave_height')
+    password_hash = generate_password_hash(data.get('password'))
 
     new_user = User(
         name = name,
@@ -62,6 +73,7 @@ def create_user():
     db.session.add(new_user) # Adiciona o novo usuário à sessão do banco de dados
     db.session.commit() # Salva as alterações no banco de dados
 
+    
     return jsonify({"message": "Sua conta foi criada com sucesso!", "id": new_user.id}), 201 # HTTP status code > 201 significa Created
 
 @app.route( '/users/<int:user_id>', methods = ['GET'])
@@ -128,10 +140,19 @@ def login():
     if not check_password_hash(user.password_hash, password):
         return jsonify({'message':'Email ou senha inválidos'}),401
 
-    access_token = create_access_token(identity=str(user.id)) # identidade do JWT (sub, de subject) é esperada como string nesse contexto
+    access_token = create_access_token(identity=str(user.id)) # identidade do JWT (sub, de subject) é esperada como string nesse contexto / guarda id no jwt
     return jsonify({'message':'login validado com sucesso',
                     'access_token':access_token}),200
 
+@app.route('/profile')
+@jwt_required()
+def profile():
+    current_user_id = get_jwt_identity() # recupera o id do usuário armazenado no JWT
+
+    user = db.session.get(User,int(current_user_id))
+
+    return jsonify({'name': user.name,
+                    'email': user.email})
 
 if __name__ == '__main__':
     app.run(debug=True) 
