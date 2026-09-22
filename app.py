@@ -2,20 +2,27 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text # Tansforma SQL textual em algo que ele possa executar no SQLAlchemy. Para isso, usamos a função text().
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import JWTManager, create_access_token
 import os
 from dotenv import load_dotenv
 
 
 #Definindo a aplicação Flask
 app = Flask(__name__) # O __name__ é uma variável especial do Python. Quando você executa o python app.py o python define __name__ == "__main__"
-
 load_dotenv()
 # Configurações do banco de dados
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") #Ela diz ao SQLAlchemy onde está o banco e como chegar nele.
 # postgresql →  banco que quero usar é PostgreSQL.
 # psycopg → Use o Psycopg para Python conversar com PostgreSQL
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+print("JWT no Flask:", app.config["JWT_SECRET_KEY"] is not None)
+
 
 db = SQLAlchemy(app) # Crie uma instância/objeto de SQLAlchemy, configurada para trabalhar com a minha aplicação Flask app, e guarde esse objeto na variável db
+jwt = JWTManager(app)
+
+
+
 class User(db.Model): # User será um modelo de dados gerenciado pelo meu objeto db
     __tablename__= 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -121,7 +128,9 @@ def login():
     if not check_password_hash(user.password_hash, password):
         return jsonify({'message':'Email ou senha inválidos'}),401
 
-    return jsonify({'message':'login validado com sucesso'}),200
+    access_token = create_access_token(identity=str(user.id)) # identidade do JWT (sub, de subject) é esperada como string nesse contexto
+    return jsonify({'message':'login validado com sucesso',
+                    'access_token':access_token}),200
 
 
 if __name__ == '__main__':
