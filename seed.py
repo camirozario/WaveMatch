@@ -1,8 +1,10 @@
 from app import app, db, SurfSpot
+
+
 spots = [
 
     # =========================
-    # BEGINNER
+    # INICIANTE
     # =========================
 
     {
@@ -11,7 +13,8 @@ spots = [
         "state": "SP",
         "latitude": -23.4216,
         "longitude": -45.0623,
-        "surf_level": "beginner",
+        "surf_level": "iniciante",
+        "beach_orientation": 75,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": "full",
@@ -27,7 +30,8 @@ spots = [
         "state": "SP",
         "latitude": -23.3601,
         "longitude": -44.8563,
-        "surf_level": "beginner",
+        "surf_level": "iniciante",
+        "beach_orientation": 135,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": None,
@@ -43,7 +47,8 @@ spots = [
         "state": "SP",
         "latitude": -23.3360,
         "longitude": -44.8975,
-        "surf_level": "beginner",
+        "surf_level": "iniciante",
+        "beach_orientation": 135,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": None,
@@ -59,7 +64,8 @@ spots = [
         "state": "SP",
         "latitude": -23.5277,
         "longitude": -45.2158,
-        "surf_level": "beginner",
+        "surf_level": "iniciante",
+        "beach_orientation": 120,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": "full",
@@ -71,7 +77,7 @@ spots = [
 
 
     # =========================
-    # INTERMEDIATE
+    # INTERMEDIARIO
     # =========================
 
     {
@@ -80,7 +86,8 @@ spots = [
         "state": "SP",
         "latitude": -23.4727,
         "longitude": -45.0665,
-        "surf_level": "intermediate",
+        "surf_level": "intermediario",
+        "beach_orientation": 120,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": "full",
@@ -96,7 +103,8 @@ spots = [
         "state": "SP",
         "latitude": -23.4019,
         "longitude": -45.0023,
-        "surf_level": "intermediate",
+        "surf_level": "intermediario",
+        "beach_orientation": 135,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": None,
@@ -112,7 +120,8 @@ spots = [
         "state": "SP",
         "latitude": -23.4873,
         "longitude": -45.0741,
-        "surf_level": "intermediate",
+        "surf_level": "intermediario",
+        "beach_orientation": 120,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": None,
@@ -128,7 +137,8 @@ spots = [
         "state": "SP",
         "latitude": -23.4649,
         "longitude": -45.0562,
-        "surf_level": "intermediate",
+        "surf_level": "intermediario",
+        "beach_orientation": 110,
         "wave_direction": "left_right",
         "predominant_direction": "left",
         "wave_shape": "full",
@@ -140,7 +150,7 @@ spots = [
 
 
     # =========================
-    # ADVANCED
+    # AVANCADO
     # =========================
 
     {
@@ -149,7 +159,8 @@ spots = [
         "state": "SP",
         "latitude": -23.4637,
         "longitude": -45.0490,
-        "surf_level": "advanced",
+        "surf_level": "avancado",
+        "beach_orientation": 110,
         "wave_direction": "left_right",
         "predominant_direction": "right",
         "wave_shape": "tubular",
@@ -165,7 +176,8 @@ spots = [
         "state": "SP",
         "latitude": -23.4170,
         "longitude": -45.0362,
-        "surf_level": "advanced",
+        "surf_level": "avancado",
+        "beach_orientation": 135,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": "tubular",
@@ -181,7 +193,8 @@ spots = [
         "state": "SP",
         "latitude": -23.3889,
         "longitude": -44.9708,
-        "surf_level": "advanced",
+        "surf_level": "avancado",
+        "beach_orientation": 135,
         "wave_direction": "left_right",
         "predominant_direction": "left",
         "wave_shape": "tubular",
@@ -197,7 +210,8 @@ spots = [
         "state": "SP",
         "latitude": -23.3703,
         "longitude": -44.7854,
-        "surf_level": "advanced",
+        "surf_level": "avancado",
+        "beach_orientation": 150,
         "wave_direction": "left_right",
         "predominant_direction": None,
         "wave_shape": "tubular",
@@ -209,16 +223,35 @@ spots = [
 
 ]
 
+
+# =========================
+# ADICIONAR / ATUALIZAR SPOTS
+# =========================
+
 with app.app_context():
+
     for spot_data in spots:
 
+        # Verifica se a praia ja existe no banco
         spot_verify_duplicate = db.session.execute(
-            db.select(SurfSpot).where(SurfSpot.name == spot_data['name'])
-            ).scalar_one_or_none() # me devolva UM objeto SurfSpot ou None se não encontrou
-                
+            db.select(SurfSpot).where(
+                SurfSpot.name == spot_data['name']
+            )
+        ).scalar_one_or_none()
+
+        # Se nao existe, cria um novo SurfSpot
         if spot_verify_duplicate is None:
-            spot = SurfSpot(**spot_data)# atalho para transformar esse dicionário em um objeto da sua classe SurfSpot.
+
+            spot = SurfSpot(**spot_data)
             db.session.add(spot)
 
+        # Se ja existe, atualiza os dados
+        else:
 
-    db.session.commit()    
+            spot_verify_duplicate.surf_level = spot_data['surf_level']
+            spot_verify_duplicate.beach_orientation = spot_data['beach_orientation']
+
+    # Salva todas as alteracoes no banco
+    db.session.commit()
+
+    print("Surf spots atualizados com sucesso!")

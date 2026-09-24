@@ -50,6 +50,7 @@ class SurfSpot(db.Model):
     state = db.Column(db.String(100),nullable=False)
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
+    beach_orientation = db.Column(db.Float, nullable=True)
     surf_level = db.Column(db.String(50), nullable=False)
     wave_direction = db.Column(db.String(100))
     predominant_direction = db.Column(db.String(100))
@@ -58,9 +59,11 @@ class SurfSpot(db.Model):
     wave_speed = db.Column(db.String(100))
     break_length = db.Column(db.String(100))
     current_tendency = db.Column(db.String(100))
+    
+    
 
 #=================
-#Funçoes Auxiliares
+#FUNÇÕES AUXILIARES
 #=================
 
 def get_marine_data(spot):
@@ -125,6 +128,57 @@ def evaluate_wave_height(wave_height, min_wave_height, max_wave_height):
         score = 50 - abs(max_wave_height - wave_height) / abs(ideal_wave_height - max_wave_height) * 50
         return round(max(0, score), 2)
 
+#Score Velocidade do Vento
+def evaluate_wind_speed(wind_speed):
+
+    if wind_speed <= 5:
+        return 100
+
+    elif wind_speed <= 10:
+        return 90
+
+    elif wind_speed <= 15:
+        return 75
+
+    elif wind_speed <= 20:
+        return 55
+
+    elif wind_speed <= 25:
+        return 35
+
+    elif wind_speed <= 30:
+        return 15
+
+    else:
+        return 0
+
+def evaluate_wind_direction(wind_direction,beach_orientation):
+    difference = abs(wind_direction - beach_orientation)
+
+    if difference > 180:
+        difference = 360-difference
+
+      # 0° = totalmente onshore
+    if difference <= 30:
+        return 20
+
+    # Entre onshore e lateral
+    elif difference <= 60:
+        return 45
+
+    # Vento lateral (cross-shore)
+    elif difference <= 120:
+        return 70
+
+    # Entre lateral e offshore
+    elif difference <= 150:
+        return 90
+
+    # 180° = totalmente offshore
+    else:
+        return 100
+
+    
 #=================
 #ROTAS
 #=================
@@ -251,8 +305,6 @@ def profile():
 @app.route('/user_main_dashboard',methods =['GET'])
 @jwt_required()
 def user_recommendations():
-    print("ENTREI NA ROTA!")
-
     #get user
     current_user_id = get_jwt_identity()
     user = db.session.get(User,int(current_user_id))
@@ -270,17 +322,16 @@ def user_recommendations():
         min_wave_height = 0.4
 
     elif user.surf_level == 'intermediário':
-        min_wave_height = 0.7
+        min_wave_height = 0.8
 
     elif user.surf_level == 'avançado':
         min_wave_height = 1
-
 
     if user.max_wave_height is not None:
         max_wave_height = user.max_wave_height
 
     elif user.surf_level == 'iniciante':
-        max_wave_height = 1
+        max_wave_height = 1.5
 
     elif user.surf_level == 'intermediário':
         max_wave_height = 2
@@ -292,11 +343,37 @@ def user_recommendations():
 
     for spot in spots:
         wave_heights_scores = {}
+        wind_speeds_scores = {}
+        wind_directions_scores ={}
+
         data_marine = get_marine_data(spot)
+        data_wind = get_wind_data(spot)
+
         wave_times = data_marine['hourly']['time']
         wave_heights = data_marine['hourly']['wave_height']
 
+        wind_times = data_wind['hourly']['time']
+        wind_speeds = data_wind['hourly']['wind_speed_10m']
+        wind_directions = data_wind['hourly']['wind_direction_10m']
+
+        wind_forecast = {}
+
+        for wind_time, wind_speed, wind_direction in zip(
+                                                        wind_times,
+                                                        wind_speeds,
+                                                        wind_directions
+                                                         ):
+            wind_forecast[wind_time] = {
+                'wind_speed': wind_speed,
+                'wind_direction': wind_direction
+                }
+
         for wave_time,wave_height in zip(wave_times,wave_heights):
+            if wave_time in wind_forecast:
+                wind_data = wind_forecast[wave_time]
+                wind_speed = wind_data['wind_speed']
+                wind_direction = wind_data['wind_direction']
+
             if datetime.fromisoformat(wave_time).date() == today:
                 hour = datetime.fromisoformat(wave_time).hour
                 periodo = None
@@ -317,17 +394,30 @@ def user_recommendations():
                     wave_height_score = evaluate_wave_height(wave_height,
                                                              min_wave_height,
                                                              max_wave_height)
+                    wind_speed_score = evaluate_wind_speed(wind_speed)
+                    wind_direction_score = evaluate_wind_direction(wind_direction,spot.beach_orientation)
+
+
+
                     if periodo not in wave_heights_scores:
                         wave_heights_scores[periodo] =[]
+                        wind_speeds_scores[periodo] =[]
+                        wind_directions_scores[periodo] =[]
 
                     wave_heights_scores[periodo].append(wave_height_score)
+                    wind_speeds_scores[periodo].append(wind_speed_score)
+                    wind_directions_scores[periodo].append(wind_direction_score)
 
         for periodo, scores in  wave_heights_scores.items(): #chave e valor juntos
-            media = mean(scores)
+            wave_height_mean = mean(scores)
+            wind_speed_mean = mean(wind_speeds_scores[periodo])
+            wind_direction_mean=mean(wind_directions_scores[periodo])
+
+            score = (wave_height_mean * 0.6 + wind_speed_mean * 0.15 + wind_direction_mean*0.25)
 
             best_spots.append({'name':spot.name,
                             'periodo':periodo,
-                            'score':media})
+                            'score':score})
 
     best_spots.sort(
         key=lambda item: item['score'],
