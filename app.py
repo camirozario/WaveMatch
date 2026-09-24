@@ -178,7 +178,29 @@ def evaluate_wind_direction(wind_direction,beach_orientation):
     else:
         return 100
 
-    
+def evaluate_surf_level(user_level, spot_level):
+
+    level_factors = {
+        'iniciante': {
+            'iniciante': 1.0,
+            'intermediario': 0.65,
+            'avancado': 0.30
+        },
+
+        'intermediario': {
+            'iniciante': 0.90,
+            'intermediario': 1.0,
+            'avancado': 0.70
+        },
+
+        'avancado': {
+            'iniciante': 0.80,
+            'intermediario': 0.95,
+            'avancado': 1.0
+        }
+    }
+
+    return level_factors[user_level][spot_level]
 #=================
 #ROTAS
 #=================
@@ -346,6 +368,12 @@ def user_recommendations():
         wind_speeds_scores = {}
         wind_directions_scores ={}
 
+        # Calcula compatibilidade entre nivel do usuario e nivel da praia
+        level_factor = evaluate_surf_level(
+            user.surf_level,
+            spot.surf_level
+        )
+        # Busca dados externos
         data_marine = get_marine_data(spot)
         data_wind = get_wind_data(spot)
 
@@ -356,6 +384,7 @@ def user_recommendations():
         wind_speeds = data_wind['hourly']['wind_speed_10m']
         wind_directions = data_wind['hourly']['wind_direction_10m']
 
+        # Organiza dados de vento por horario
         wind_forecast = {}
 
         for wind_time, wind_speed, wind_direction in zip(
@@ -408,12 +437,17 @@ def user_recommendations():
                     wind_speeds_scores[periodo].append(wind_speed_score)
                     wind_directions_scores[periodo].append(wind_direction_score)
 
+        # Calcula media de cada periodo
         for periodo, scores in  wave_heights_scores.items(): #chave e valor juntos
             wave_height_mean = mean(scores)
             wind_speed_mean = mean(wind_speeds_scores[periodo])
             wind_direction_mean=mean(wind_directions_scores[periodo])
 
-            score = (wave_height_mean * 0.6 + wind_speed_mean * 0.15 + wind_direction_mean*0.25)
+            # Score das condicoes
+            condition_score = (wave_height_mean * 0.6 + wind_speed_mean * 0.15 + wind_direction_mean*0.25)
+            score = condition_score * level_factor
+
+            
 
             best_spots.append({'name':spot.name,
                             'periodo':periodo,
