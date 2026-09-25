@@ -15,11 +15,35 @@ from flask_migrate import Migrate
 from dotenv import load_dotenv
 from datetime import datetime
 from statistics import mean
+from flask_cors import CORS
+from flasgger import Swagger
+
 
 
 #Definindo a aplicação Flask
 app = Flask(__name__) # O __name__ é uma variável especial do Python. Quando você executa o python app.py o python define __name__ == "__main__"
+CORS(app)
+swagger_template = {
+    "swagger": "2.0",
+    "info": {
+        "title": "WaveMatch API",
+        "version": "1.0.0",
+        "description": "API de recomendações de surf."
+    },
+    "securityDefinitions": {
+        "Bearer": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": "Insira: Bearer <seu_token_JWT>"
+        }
+    }
+}
+swagger = Swagger(app, template=swagger_template)
+
 load_dotenv()
+
+
 # Configurações do banco de dados
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") #Ela diz ao SQLAlchemy onde está o banco e como chegar nele.
 # postgresql →  banco que quero usar é PostgreSQL.
@@ -99,7 +123,87 @@ def get_wind_data(spot):
 
     return data_wind
 
+def get_ubatuba_weather():
 
+    params_weather = {
+        'latitude': -23.4339,
+        'longitude': -45.0833,
+        'current': 'temperature_2m,weather_code',
+        'timezone': 'America/Sao_Paulo'
+    }
+
+    url_weather = 'https://api.open-meteo.com/v1/forecast'
+
+    response_weather = requests.get(
+        url_weather,
+        params=params_weather
+    )
+
+    return response_weather.json()
+
+def evaluate_weather(weather_code, temperature):
+
+    # Ensolarado
+    if weather_code in [0, 1]:
+
+        if temperature < 20:
+            return {
+                'condition': 'ensolarado_frio',
+                'condition_text': 'ensolarado',
+                'message': 'Sol lá fora, mas eu levaria um john para o surf!'
+            }
+
+        else:
+            return {
+                'condition': 'ensolarado',
+                'condition_text': 'ensolarado',
+                'message': 'Sol perfeito para aproveitar o mar!'
+            }
+
+    # Nublado
+    elif weather_code in [2, 3, 45, 48]:
+        return {
+            'condition': 'nublado',
+            'condition_text': 'nublado',
+            'message': 'Bora animar o dia surfando?'
+        }
+
+    # Garoa ou chuva
+    elif weather_code in [
+        51, 53, 55, 56, 57,
+        61, 63, 65, 66, 67,
+        80, 81, 82
+    ]:
+        return {
+            'condition': 'chuvoso',
+            'condition_text': 'chuvoso',
+            'message': 'Vai precisar de coragem para surfar hoje!'
+        }
+
+    # Neve
+    elif weather_code in [71, 73, 75, 77, 85, 86]:
+        return {
+            'condition': 'frio',
+            'condition_text': 'frio',
+            'message': 'Hoje eu definitivamente levaria um john para o surf!'
+        }
+
+    # Tempestade
+    elif weather_code in [95, 96, 99]:
+        return {
+            'condition': 'tempestade',
+            'condition_text': 'com tempestade',
+            'message': 'Hoje vale acompanhar as condições antes de entrar no mar.'
+        }
+
+    else:
+        return {
+            'condition': 'indefinido',
+            'condition_text': 'com condições variáveis',
+            'message': 'Bora conferir como estão as condições para o surf hoje?'
+        }
+    
+    
 #score altura da onda
 def evaluate_wave_height(wave_height, min_wave_height, max_wave_height):
 
@@ -205,13 +309,288 @@ def evaluate_surf_level(user_level, spot_level):
 #ROTAS
 #=================
 
-@app.route('/')
-def home():
-    result = db.session.execute(text("SELECT 1"))  #Executa a query SQL e retorna o resultado(número 1).
-    return "Database connected"
+#=================
+#PROFILE
+#=================
+@app.route('/profile', methods = ['GET'])
+@jwt_required()
+def get_profile():
+    """
+    Consulta dados do Usuário
+    ---
+    tags:
+      - Profile
+    security:
+      - Bearer: []  
+    responses:
+      200:
+        description: Dados Obtidos com sucesso
+        schema:
+          type: object
+          properties:
+            id: 
+              type: integer
+            name:
+              type: string
+            email:
+              type: string
+            date_of_birth:
+              type: string
+              format: date
+            surf_level:
+              type: string
+            min_wave_height:
+              type: number
+            max_wave_height:
+              type: number  
+      401:
+        description: Token ausente, inválido ou expirado.
+
+      404:
+        description: Usuário não encontrado.
+    """
+    user_id = get_jwt_identity() #
+    user = db.session.get(User,int(user_id))
+
+    if user is None:
+        return jsonify({'message': 'Usuário não encontrado'}), 404
+    
+    return jsonify({
+        'id': user.id,
+        'name': user.name,
+        'email': user.email,
+        'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
+        'surf_level': user.surf_level,
+        'min_wave_height': user.min_wave_height,
+        'max_wave_height': user.max_wave_height
+    }), 200
+
+
+@app.route('/profile', methods = ['PUT'])
+@jwt_required()
+def update_user():
+    """
+    Atualizar dados do usuário
+    ---
+    tags:
+      - Profile
+
+    security:
+      - Bearer: []
+
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            surf_level:
+              type: string
+              enum:
+                - iniciante
+                - intermediario
+                - avancado
+
+            max_wave_height:
+              type: number
+              example: 1.5
+
+            min_wave_height:
+              type: number
+              example: 0.5
+
+    responses:
+      200:
+        description: Informações atualizadas com sucesso.
+
+      401:
+        description: Token ausente, inválido ou expirado.
+
+      404:
+        description: Usuário não encontrado.
+    """
+    user_id = get_jwt_identity() #pega a identidade que foi armazenada dentro do JWT quando fizemos o login.
+
+    user = db.session.get(User, int(user_id))
+
+    if user is None:
+        return jsonify ({'message': 'Usuário não encontrado'}),404
+
+    data = request.get_json()
+    if 'surf_level' in data:
+        user.surf_level = data.get('surf_level')
+
+    if 'min_wave_height' in data:
+        user.min_wave_height = data.get('min_wave_height')
+
+    if 'max_wave_height' in data:
+        user.max_wave_height = data.get('max_wave_height')
+
+    db.session.commit()
+
+    return jsonify({'message':'Informações atualizadas com sucesso!'}),200
+
+@app.route('/profile', methods = ['DELETE'])
+@jwt_required()
+def delete_account():
+    """
+    Excluir conta do usuário
+    ---
+    tags:
+      - Profile
+
+    security:
+      - Bearer: []
+
+    responses:
+      200:
+        description: Conta excluída com sucesso.
+
+      401:
+        description: Token ausente, inválido ou expirado.
+
+      404:
+        description: Usuário não encontrado.
+    """
+    user_id = get_jwt_identity()
+
+    user = db.session.get(User,int(user_id))
+
+    if user is None:
+        return jsonify({'message':'Usuário não encontrado'})
+
+    db.session.delete(user)
+    db.session.commit()
+
+    return jsonify({'message':'user deleted successfuly'}),200
+
+
+#=================
+#USER
+#=================
+
+@app.route('/login', methods=['POST'])
+def login():
+    """
+    Permite o login do usuario atraves da geracao de token JWT
+    ---
+    tags:
+        - User
+
+    parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
+            required:
+                - email
+                - password
+            properties:
+                email:
+                    type: string
+                    example: camilla@email.com
+                password:
+                    type: string
+                    example: minhaSenha123
+
+    responses:
+        200:
+            description: Usuario autenticado com sucesso
+            schema:
+                type: object
+                properties:
+                    message:
+                        type: string
+                        example: login validado com sucesso
+                    access_token:
+                        type: string
+                        example: token_jwt
+
+        401:
+            description: Email ou senha invalidos
+    """
+
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    user = db.session.execute(
+        db.select(User).where(User.email == email)
+    ).scalar_one_or_none()
+
+    if user is None:
+        return jsonify({'message':'Email ou senha inválidos'}),401
+
+    if not check_password_hash(user.password_hash, password):
+        return jsonify({'message':'Email ou senha inválidos'}),401
+
+    access_token = create_access_token(identity=str(user.id)) # identidade do JWT (sub, de subject) é esperada como string nesse contexto / guarda id no jwt
+    return jsonify({'message':'login validado com sucesso',
+                    'access_token':access_token}), 200
+
 
 @app.route('/register', methods=['POST'])
 def create_user():
+    """
+    Cadastra um novo usuário no WaveMatch.
+    ---
+    tags:
+      - User
+
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - name
+            - email
+            - password
+            - surf_level
+          properties:
+            name:
+              type: string
+              example: Marina
+
+            email:
+              type: string
+              example: marina@email.com
+
+            password:
+              type: string
+              format: password
+              example: minhaSenha123
+
+            surf_level:
+              type: string
+              enum:
+                - iniciante
+                - intermediario
+                - avancado
+
+            min_wave_height:
+              type: number
+              example: 0.5
+
+            max_wave_height:
+              type: number
+              example: 1.5
+
+            date_of_birth:
+              type: string
+              format: date
+              example: "2000-05-15"
+
+    responses:
+      201:
+        description: Usuário cadastrado com sucesso.
+
+      409:
+        description: E-mail já registrado.
+    """
     data = request.get_json() # Pega os dados enviados pelo cliente e transforma em um dicionário Python
     email = data.get('email')
     verify_email=db.session.execute(
@@ -243,90 +622,103 @@ def create_user():
 
 
 #=================
-#SEÇÃO DO USUÁRIO
+#DASHBOARD
 #=================
-@app.route( '/users/<int:user_id>', methods = ['GET'])
-def get_user(user_id):
-    user = db.session.get(User,user_id) # Na sessão do banco (db.session), pegue (get) um objeto do modelo User cuja primary key seja user_id
-    # retorna none se não encontrar
 
-    if user is None:
-        return jsonify ({"message": 'Usuário não encontrado'}),404
-    
-    return jsonify({
-        'id': user.id,
-        'name': user.name,
-        'email': user.email
-        })
-
-@app.route('/users/<int:user_id>', methods = ['PUT'])
-def update_user(user_id):
-    user = db.session.get(User,user_id)
-
-    if user is None:
-        return jsonify ({'message': 'usuário não encontrado'}),404
-
-    data = request.get_json()
-    if 'surf_level' in data:
-        user.surf_level = data.get('surf_level')
-
-    if 'min_wave_height' in data:
-        user.min_wave_height = data.get('min_wave_height')
-
-    if 'max_wave_height' in data:
-        user.max_wave_height = data.get('max_wave_height')
-
-    db.session.commit()
-
-    return jsonify({'message':'Informações atualizadas com sucesso!'}),200
-
-@app.route('/users/<int:user_id>', methods = ['DELETE'])
-def delete_account(user_id):
-    user = db.session.get(User,user_id)
-
-    if user is None:
-        return jsonify({'message':'Usuário não encontrado'})
-
-    db.session.delete(user)
-    db.session.commit()
-
-    return jsonify({'message':'user deleted successfuly'}),200
-
-
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-
-    user = db.session.execute(
-        db.select(User).where(User.email == email)
-    ).scalar_one_or_none()
-
-    if user is None:
-        return jsonify({'message':'Email ou senha inválidos'}),401
-
-    if not check_password_hash(user.password_hash, password):
-        return jsonify({'message':'Email ou senha inválidos'}),401
-
-    access_token = create_access_token(identity=str(user.id)) # identidade do JWT (sub, de subject) é esperada como string nesse contexto / guarda id no jwt
-    return jsonify({'message':'login validado com sucesso',
-                    'access_token':access_token}),200
-
-@app.route('/profile')
+@app.route('/dashboard_info', methods=['GET'])
 @jwt_required()
-def profile():
-    current_user_id = get_jwt_identity() # recupera o id do usuário armazenado no JWT
+def dashboard_info():
+    """
+    Obtém dados básicos apresentados no dashboard principal.
+    ---
+    tags:
+      - Dashboard
 
-    user = db.session.get(User,int(current_user_id))
+    security:
+      - Bearer: []
 
-    return jsonify({'name': user.name,
-                    'email': user.email})
+    responses:
+      200:
+        description: Dados recebidos com sucesso.
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+            temperature:
+              type: number
+              format: float
+            condition:
+              type: string
+            condition_text:
+              type: string
+            message:
+              type: string
 
+      401:
+        description: Token ausente, inválido ou expirado.
+    """
+
+    user_id = get_jwt_identity()
+
+    user = db.session.get(User, int(user_id))
+
+    weather_data = get_ubatuba_weather()
+
+    temperature = weather_data['current']['temperature_2m']
+    weather_code = weather_data['current']['weather_code']
+
+    weather = evaluate_weather(weather_code, temperature)
+
+    return jsonify({
+        'name': user.name,
+        'temperature': temperature,
+        'condition': weather['condition'],
+        'condition_text': weather['condition_text'],
+        'message': weather['message']
+    }), 200
 
 @app.route('/user_main_dashboard',methods =['GET'])
 @jwt_required()
 def user_recommendations():
+    """
+    Retorna as três melhores praias e os períodos
+    recomendados conforme o perfil do usuário.
+    ---
+    tags:
+      - Dashboard
+
+    security:
+      - Bearer: []
+
+    responses:
+      200:
+        description: Recomendações obtidas com sucesso.
+        schema:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              best_score:
+                type: number
+                format: float
+
+              periodos:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    periodo:
+                      type: string
+                      example: manhã
+
+                    score:
+                      type: number
+                      format: float
+
+      401:
+        description: Token ausente, inválido ou expirado.
+    """
     #get user
     current_user_id = get_jwt_identity()
     user = db.session.get(User,int(current_user_id))
@@ -343,10 +735,10 @@ def user_recommendations():
     elif user.surf_level == 'iniciante':
         min_wave_height = 0.4
 
-    elif user.surf_level == 'intermediário':
+    elif user.surf_level == 'intermediario':
         min_wave_height = 0.8
 
-    elif user.surf_level == 'avançado':
+    elif user.surf_level == 'avancado':
         min_wave_height = 1
 
     if user.max_wave_height is not None:
@@ -492,11 +884,11 @@ def user_recommendations():
     
 
 
-
+"""
 #=================
-#SEÇÃO DO SPOTS DE SURF
+#SEÇÃO DO SPOTS DE SURF - FUTURAS APLICAÇÕES
 #=================
-
+#Essa rota consulta o banco de dados e devolve todas as praias cadastradas no WaveMatch
 @app.route('/spots', methods=['GET'])
 def get_spots():
     spots = db.session.execute(
@@ -576,6 +968,8 @@ def get_forecast(spot_id):
     
     
     return jsonify(spot_forecast), 200
+"""
+
 
 if __name__ == '__main__':
     app.run(debug=True)
