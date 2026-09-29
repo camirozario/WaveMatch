@@ -45,7 +45,8 @@ load_dotenv()
 
 
 # Configurações do banco de dados
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") #Ela diz ao SQLAlchemy onde está o banco e como chegar nele.
+# Dentro do Docker, "localhost" é o próprio container, então usamos a URL que aponta para o host (host.docker.internal)
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DOCKER_DATABASE_URL") if os.path.exists("/.dockerenv") else os.getenv("DATABASE_URL") #Ela diz ao SQLAlchemy onde está o banco e como chegar nele.
 # postgresql →  banco que quero usar é PostgreSQL.
 # psycopg → Use o Psycopg para Python conversar com PostgreSQL
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
@@ -604,6 +605,19 @@ def create_user():
     surf_level = data.get('surf_level')
     min_wave_height = data.get('min_wave_height')
     max_wave_height = data.get('max_wave_height')
+
+    # Converte campos vazios em None
+    min_wave_height = (
+        float(min_wave_height)
+        if min_wave_height not in (None, "")
+        else None
+    )
+
+    max_wave_height = (
+        float(max_wave_height)
+        if max_wave_height not in (None, "")
+        else None
+    )
     password_hash = generate_password_hash(data.get('password'))
 
     new_user = User(
@@ -729,31 +743,26 @@ def user_recommendations():
     best_spots = []
     today = datetime.now().date()
 
-    if user.min_wave_height is not None:
-        min_wave_height = user.min_wave_height
+    # Alturas padrão conforme o nível do surfista
+    default_wave_heights = {
+        'iniciante': (0.4, 1.5),
+        'intermediario': (0.8, 2.0),
+        'avancado': (1.0, 3.0)
+    }
 
-    elif user.surf_level == 'iniciante':
-        min_wave_height = 0.4
+    default_min, default_max = default_wave_heights[user.surf_level]
 
-    elif user.surf_level == 'intermediario':
-        min_wave_height = 0.8
+    min_wave_height = (
+        user.min_wave_height
+        if user.min_wave_height is not None
+        else default_min
+    )
 
-    elif user.surf_level == 'avancado':
-        min_wave_height = 1
-
-    if user.max_wave_height is not None:
-        max_wave_height = user.max_wave_height
-
-    elif user.surf_level == 'iniciante':
-        max_wave_height = 1.5
-
-    elif user.surf_level == 'intermediário':
-        max_wave_height = 2
-
-    elif user.surf_level == 'avançado':
-        max_wave_height = 3
-
-
+    max_wave_height = (
+        user.max_wave_height
+        if user.max_wave_height is not None
+        else default_max
+    )
 
     for spot in spots:
         wave_heights_scores = {}
@@ -789,11 +798,13 @@ def user_recommendations():
                 'wind_direction': wind_direction
                 }
 
-        for wave_time,wave_height in zip(wave_times,wave_heights):
-            if wave_time in wind_forecast:
-                wind_data = wind_forecast[wave_time]
-                wind_speed = wind_data['wind_speed']
-                wind_direction = wind_data['wind_direction']
+        for wave_time, wave_height in zip(wave_times, wave_heights):
+            if wave_time not in wind_forecast:
+                continue
+
+            wind_data = wind_forecast[wave_time]
+            wind_speed = wind_data['wind_speed']
+            wind_direction = wind_data['wind_direction']
 
             if datetime.fromisoformat(wave_time).date() == today:
                 hour = datetime.fromisoformat(wave_time).hour
@@ -972,4 +983,4 @@ def get_forecast(spot_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
