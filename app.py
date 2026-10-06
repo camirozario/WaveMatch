@@ -1,5 +1,6 @@
 import os
 import requests
+import math
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text # Tansforma SQL textual em algo que ele possa executar no SQLAlchemy. Para isso, usamos a função text().
@@ -306,6 +307,27 @@ def evaluate_surf_level(user_level, spot_level):
     }
 
     return level_factors[user_level][spot_level]
+
+
+def mean_wind_direction(directions):
+    #convert vetor 
+    sin_sum = sum(math.sin(math.radians(d)) for d in directions)
+    cos_sum = sum(math.cos(math.radians(d)) for d in directions)
+    
+    #calculo final angulo medio
+    angle = math.degrees(math.atan2(sin_sum, cos_sum))
+
+    return angle % 360
+
+def wind_direction_to_compass(degrees):
+    directions = [
+        "N", "NE", "E", "SE",
+        "S", "SW", "W", "NW"
+    ]
+
+    index = round(degrees / 45) % 8
+
+    return directions[index]
 #=================
 #ROTAS
 #=================
@@ -765,9 +787,14 @@ def user_recommendations():
     )
 
     for spot in spots:
+        # cria dicionários para armazenar os scores e valores de cada PERÍODO do dia
         wave_heights_scores = {}
         wind_speeds_scores = {}
         wind_directions_scores ={}
+
+        wave_heights_values = {}
+        wind_speeds_values = {}
+        wind_directions_values = {}
 
         # Calcula compatibilidade entre nivel do usuario e nivel da praia
         level_factor = evaluate_surf_level(
@@ -832,29 +859,44 @@ def user_recommendations():
 
 
                     if periodo not in wave_heights_scores:
-                        wave_heights_scores[periodo] =[]
-                        wind_speeds_scores[periodo] =[]
-                        wind_directions_scores[periodo] =[]
+                        wave_heights_scores[periodo] = []
+                        wind_speeds_scores[periodo] = []
+                        wind_directions_scores[periodo] = []
+
+                        wave_heights_values[periodo] = []
+                        wind_speeds_values[periodo] = []
+                        wind_directions_values[periodo] = []
 
                     wave_heights_scores[periodo].append(wave_height_score)
                     wind_speeds_scores[periodo].append(wind_speed_score)
                     wind_directions_scores[periodo].append(wind_direction_score)
 
+                    wave_heights_values[periodo].append(wave_height)
+                    wind_speeds_values[periodo].append(wind_speed)
+                    wind_directions_values[periodo].append(wind_direction)
+
         # Calcula media de cada periodo
         for periodo, scores in  wave_heights_scores.items(): #chave e valor juntos
-            wave_height_mean = mean(scores)
-            wind_speed_mean = mean(wind_speeds_scores[periodo])
-            wind_direction_mean=mean(wind_directions_scores[periodo])
+            wave_height_score_mean = mean(scores)
+            wind_speed_score_mean = mean(wind_speeds_scores[periodo])
+            wind_direction_score_mean=mean(wind_directions_scores[periodo])
+            wave_height_mean = mean(wave_heights_values[periodo])
+            wind_speed_mean = mean(wind_speeds_values[periodo])
+            wind_direction_mean = mean_wind_direction(wind_directions_values[periodo])
+
 
             # Score das condicoes
-            condition_score = (wave_height_mean * 0.6 + wind_speed_mean * 0.15 + wind_direction_mean*0.25)
+            condition_score = (wave_height_score_mean * 0.6 + wind_speed_score_mean * 0.15 + wind_direction_score_mean*0.25)
             score = condition_score * level_factor
 
             
 
             best_spots.append({'name':spot.name,
                             'periodo':periodo,
-                            'score':score})
+                            'score':score,
+                            'wave_height': wave_height_mean,
+                            'wind_speed': wind_speed_mean,
+                            'wind_direction': wind_direction_mean})
 
     best_spots.sort(
         key=lambda item: item['score'],
@@ -866,6 +908,9 @@ def user_recommendations():
 
         spot_name = best_spot['name']
         score = best_spot['score']
+        wave_height_mean = best_spot['wave_height']
+        wind_speed_mean = best_spot['wind_speed']
+        wind_direction_mean = best_spot['wind_direction']
 
         # If the beach is not in top3 yet, add it
         # The first score found is the best score because best_spots is already sorted
@@ -886,7 +931,10 @@ def user_recommendations():
 
                 top3[spot_name]['periodos'].append({
                     'periodo': best_spot['periodo'],
-                    'score': round(score, 2)
+                    'score': round(score, 2),
+                    'wave_height': round(wave_height_mean, 2),
+                    'wind_speed': round(wind_speed_mean, 2),
+                    'wind_direction':  wind_direction_to_compass(wind_direction_mean)
                 })
 
     print(top3)
