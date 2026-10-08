@@ -820,10 +820,14 @@ def user_recommendations():
                                                         wind_speeds,
                                                         wind_directions
                                                          ):
+            if datetime.fromisoformat(wind_time).date() != today:
+                continue
+
             wind_forecast[wind_time] = {
                 'wind_speed': wind_speed,
                 'wind_direction': wind_direction
                 }
+            
 
         for wave_time, wave_height in zip(wave_times, wave_heights):
             if wave_time not in wind_forecast:
@@ -833,47 +837,47 @@ def user_recommendations():
             wind_speed = wind_data['wind_speed']
             wind_direction = wind_data['wind_direction']
 
-            if datetime.fromisoformat(wave_time).date() == today:
-                hour = datetime.fromisoformat(wave_time).hour
-                periodo = None
+            
+            hour = datetime.fromisoformat(wave_time).hour
+            periodo = None
 
-                if 5 <= hour < 7:
-                    periodo = 'amanhecer'
+            if 5 <= hour < 7:
+                periodo = 'amanhecer'
 
-                elif 7 <= hour < 12:
-                    periodo = 'manhã'
+            elif 7 <= hour < 12:
+                periodo = 'manhã'
 
-                elif 12 <= hour < 16:
-                    periodo = 'tarde'
+            elif 12 <= hour < 16:
+                periodo = 'tarde'
 
-                elif 16 <= hour < 19:
-                    periodo = 'fim da tarde'
+            elif 16 <= hour < 19:
+                periodo = 'fim da tarde'
 
-                if periodo is not None:
-                    wave_height_score = evaluate_wave_height(wave_height,
+            if periodo is not None:
+                wave_height_score = evaluate_wave_height(wave_height,
                                                              min_wave_height,
                                                              max_wave_height)
-                    wind_speed_score = evaluate_wind_speed(wind_speed)
-                    wind_direction_score = evaluate_wind_direction(wind_direction,spot.beach_orientation)
+                wind_speed_score = evaluate_wind_speed(wind_speed)
+                wind_direction_score = evaluate_wind_direction(wind_direction,spot.beach_orientation)
 
 
 
-                    if periodo not in wave_heights_scores:
-                        wave_heights_scores[periodo] = []
-                        wind_speeds_scores[periodo] = []
-                        wind_directions_scores[periodo] = []
+                if periodo not in wave_heights_scores:
+                    wave_heights_scores[periodo] = []
+                    wind_speeds_scores[periodo] = []
+                    wind_directions_scores[periodo] = []
 
-                        wave_heights_values[periodo] = []
-                        wind_speeds_values[periodo] = []
-                        wind_directions_values[periodo] = []
+                    wave_heights_values[periodo] = []
+                    wind_speeds_values[periodo] = []
+                    wind_directions_values[periodo] = []
 
-                    wave_heights_scores[periodo].append(wave_height_score)
-                    wind_speeds_scores[periodo].append(wind_speed_score)
-                    wind_directions_scores[periodo].append(wind_direction_score)
+                wave_heights_scores[periodo].append(wave_height_score)
+                wind_speeds_scores[periodo].append(wind_speed_score)
+                wind_directions_scores[periodo].append(wind_direction_score)
 
-                    wave_heights_values[periodo].append(wave_height)
-                    wind_speeds_values[periodo].append(wind_speed)
-                    wind_directions_values[periodo].append(wind_direction)
+                wave_heights_values[periodo].append(wave_height)
+                wind_speeds_values[periodo].append(wind_speed)
+                wind_directions_values[periodo].append(wind_direction)
 
         # Calcula media de cada periodo
         for periodo, scores in  wave_heights_scores.items(): #chave e valor juntos
@@ -891,7 +895,7 @@ def user_recommendations():
 
             
 
-            best_spots.append({'name':spot.name,
+        best_spots.append({'name':spot.name,
                             'periodo':periodo,
                             'score':score,
                             'wave_height': wave_height_mean,
@@ -941,6 +945,54 @@ def user_recommendations():
 
     return top3
     
+@app.route('/spots/<spot_name>/hourly',methods=['GET'])
+@jwt_required() ## mantém o endpoint autenticado
+def spot_hourly(spot_name):
+    hourly_data ={}
+
+    today = datetime.now().date()
+    spot = SurfSpot.query.filter_by(name=spot_name).first()
+    if spot is None:
+        return jsonify({'message':'Surf Spot não encontrado'}),404
+    data_marine = get_marine_data(spot)
+    data_wind = get_wind_data(spot)
+
+    wave_times = data_marine['hourly']['time']
+    wave_heights = data_marine['hourly']['wave_height']
+    
+    wind_times = data_wind['hourly']['time']
+    wind_speeds = data_wind['hourly']['wind_speed_10m']
+    wind_directions = data_wind['hourly']['wind_direction_10m']
+    
+    wind_forecast = {}
+
+    for wind_time, wind_speed, wind_direction in zip(wind_times,wind_speeds,wind_directions):
+        if datetime.fromisoformat(wind_time).date() != today:
+                continue
+
+        wind_forecast[wind_time] = {
+                'wind_speed': wind_speed,
+                'wind_direction': wind_direction
+                }
+            
+
+    for wave_time, wave_height in zip(wave_times, wave_heights):
+        if wave_time not in wind_forecast:
+            continue
+
+        wind_data = wind_forecast[wave_time]
+        wind_speed = wind_data['wind_speed']
+        wind_direction = wind_data['wind_direction']
+
+        hourly_data[wave_time] ={
+        'wave_height': wave_height,
+        'wind_speed': wind_speed,
+        'wind_direction': wind_direction}
+
+
+    return hourly_data,200
+
+
 
 
 """

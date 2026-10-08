@@ -93,7 +93,6 @@ Substitua os valores de exemplo pelas suas configurações.
 
 **Importante:**
 
-- Não publique o arquivo `.env` no GitHub.
 - O endereço `host.docker.internal` permite que o container acesse o PostgreSQL instalado no computador.
 - Se o banco estiver em outro ambiente, ajuste a variável `DATABASE_URL`.
 
