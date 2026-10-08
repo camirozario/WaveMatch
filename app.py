@@ -787,6 +787,7 @@ def user_recommendations():
     )
 
     for spot in spots:
+
         # cria dicionários para armazenar os scores e valores de cada PERÍODO do dia
         wave_heights_scores = {}
         wind_speeds_scores = {}
@@ -801,6 +802,7 @@ def user_recommendations():
             user.surf_level,
             spot.surf_level
         )
+
         # Busca dados externos
         data_marine = get_marine_data(spot)
         data_wind = get_wind_data(spot)
@@ -890,18 +892,19 @@ def user_recommendations():
 
 
             # Score das condicoes
-            condition_score = (wave_height_score_mean * 0.6 + wind_speed_score_mean * 0.15 + wind_direction_score_mean*0.25)
+            condition_score = (wave_height_score_mean * 0.60 + wind_speed_score_mean * 0.15 + wind_direction_score_mean*0.25)
             score = condition_score * level_factor
 
             
 
-        best_spots.append({'name':spot.name,
-                            'periodo':periodo,
-                            'score':score,
-                            'wave_height': wave_height_mean,
-                            'wind_speed': wind_speed_mean,
-                            'wind_direction': wind_direction_mean})
-
+            best_spots.append({'name':spot.name,
+                                'periodo':periodo,
+                                'score':score,
+                                'wave_height': wave_height_mean,
+                                'wind_speed': wind_speed_mean,
+                                'wind_direction': wind_direction_mean})
+            
+        
     best_spots.sort(
         key=lambda item: item['score'],
         reverse=True)
@@ -985,9 +988,10 @@ def spot_hourly(spot_name):
         wind_direction = wind_data['wind_direction']
 
         hourly_data[wave_time] ={
-        'wave_height': wave_height,
-        'wind_speed': wind_speed,
-        'wind_direction': wind_direction}
+            'wave_height': wave_height,
+            'wind_speed': wind_speed,
+            'wind_direction': wind_direction
+            }
 
 
     return hourly_data,200
