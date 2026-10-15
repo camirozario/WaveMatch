@@ -2,22 +2,22 @@ import os
 import requests
 import math
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text # Tansforma SQL textual em algo que ele possa executar no SQLAlchemy. Para isso, usamos a função text().
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import (
-    JWTManager,
     create_access_token,
     jwt_required,
     get_jwt_identity
 )
 
-from flask_migrate import Migrate
 from dotenv import load_dotenv
 from datetime import datetime
 from statistics import mean
 from flask_cors import CORS
 from flasgger import Swagger
+
+from extensions import db, jwt, migrate
+from models import User, SurfSpot
 
 from scoring_service import (
     evaluate_wave_height,
@@ -63,7 +63,6 @@ swagger = Swagger(app, template=swagger_template)
 
 load_dotenv()
 
-
 # Configurações do banco de dados
 # Dentro do Docker, "localhost" é o próprio container, então usamos a URL que aponta para o host (host.docker.internal)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DOCKER_DATABASE_URL") if os.path.exists("/.dockerenv") else os.getenv("DATABASE_URL") #Ela diz ao SQLAlchemy onde está o banco e como chegar nele.
@@ -71,41 +70,10 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DOCKER_DATABASE_URL") if os.p
 # psycopg → Use o Psycopg para Python conversar com PostgreSQL
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 
-
-db = SQLAlchemy(app) # Crie uma instância/objeto de SQLAlchemy, configurada para trabalhar com a minha aplicação Flask app, e guarde esse objeto na variável db
-jwt = JWTManager(app)
-migrate = Migrate(app,db)
-
-class User(db.Model): # User será um modelo de dados gerenciado pelo meu objeto db
-    __tablename__= 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100),nullable=False)
-    email = db.Column(db.String(100),nullable=False, unique=True)
-    password_hash = db.Column(db.String(255),nullable=False)
-    surf_level = db.Column(db.String(50),nullable=False)
-    min_wave_height = db.Column(db.Float,nullable=True)
-    max_wave_height = db.Column(db.Float, nullable=True)
-    date_of_birth = db.Column(db.Date, nullable=True)
-
-class SurfSpot(db.Model):
-    __tablename__= 'surf_spot'
-    id = db.Column(db.Integer, primary_key = True)
-    name = db.Column(db.String(100), nullable=False)
-    city = db.Column(db.String(100), nullable=False)
-    state = db.Column(db.String(100),nullable=False)
-    latitude = db.Column(db.Float, nullable=False)
-    longitude = db.Column(db.Float, nullable=False)
-    beach_orientation = db.Column(db.Float, nullable=True)
-    surf_level = db.Column(db.String(50), nullable=False)
-    wave_direction = db.Column(db.String(100))
-    predominant_direction = db.Column(db.String(100))
-    wave_shape = db.Column(db.String(100))
-    wave_duration = db.Column(db.String(100))
-    wave_speed = db.Column(db.String(100))
-    break_length = db.Column(db.String(100))
-    current_tendency = db.Column(db.String(100))
-    
-    
+# Crie uma instância/objeto de SQLAlchemy, configurada para trabalhar com a minha aplicação Flask app, e guarde esse objeto na variável db
+db.init_app(app)
+jwt.init_app(app)
+migrate.init_app(app, db)
 
 #=================
 #FUNÇÕES AUXILIARES
